@@ -176,8 +176,8 @@ function App(){
     h(ProgressBar,{tasks,isToday:isT}),
     // Legend
     h("div",{style:{padding:"8px 16px",display:"flex",gap:8,flexWrap:"wrap",background:"#0f1a2e",borderBottom:"1px solid #1a2a45",flexShrink:0}},
-      ...CATEGORIES.map(c=>{const n=tasks.filter(t=>t.category===c.id).length;return h("span",{key:c.id,style:{display:"flex",alignItems:"center",gap:4,fontSize:11,color:n>0?c.color:"#2a3f5a",fontWeight:600}},
-        h("span",{style:{width:8,height:8,borderRadius:3,background:n>0?c.color:"#1a2a45"}}),c.label,n>0&&h("span",{style:{fontSize:10,opacity:.6}},`(${n})`))})
+      ...CATEGORIES.map(c=>{const n=tasks.filter(t=>t.category===c.id).length;return h("span",{key:c.id,style:{display:"flex",alignItems:"center",gap:5,fontSize:11,color:n>0?c.color:"#64748b",fontWeight:700,opacity:n>0?1:0.45}},
+        h("span",{style:{width:11,height:11,borderRadius:4,background:c.color,flexShrink:0,boxShadow:n>0?`0 0 6px ${c.color}80`:"none"}}),c.label,n>0&&h("span",{style:{fontSize:10,opacity:.6}},`(${n})`))})
     ),
     // Timeline
     h("div",{ref,onClick:clickTL,style:{flex:1,overflowY:"auto",position:"relative",background:"#0a1628",WebkitOverflowScrolling:"touch"}},
