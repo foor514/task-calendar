@@ -74,7 +74,7 @@ function ProgressBar({tasks,isToday}){
   if(!isToday||!tasks.length)return null;
   const nH=now.getHours()+now.getMinutes()/60;
   const sorted=[...tasks].sort((a,b)=>pT(a.startTime)-pT(b.startTime));
-  const dS=pT(sorted[0].startTime),dE=Math.max(...sorted.map(t=>pT(t.endTime))),span=dE-dS;
+  const dS=pT(sorted[0].startTime),dE=24,span=dE-dS;
   if(span<=0)return null;
   const prog=Math.max(0,Math.min(1,(nH-dS)/span));
   let cur=null,nxt=null;
@@ -89,12 +89,12 @@ function ProgressBar({tasks,isToday}){
     h("div",{style:{marginBottom:10,display:"flex",alignItems:"center",justifyContent:"space-between"}},
       cur?h("div",{style:{display:"flex",alignItems:"center",gap:8,minWidth:0,flex:1}},
         h("div",{style:{width:8,height:8,borderRadius:"50%",flexShrink:0,background:cCat?.color||"#94a3b8",boxShadow:`0 0 10px ${cCat?.color||"#94a3b8"}80`,animation:"pulse 2s ease-in-out infinite"}}),
-        h("span",{style:{fontSize:13,fontWeight:700,color:"#cbd5e1",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}},cur.title.split("\n")[0]),
+        h("span",{style:{fontSize:13,fontWeight:700,color:"#cbd5e1",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}},(cur.title||cCat?.label||"").split("\n")[0]),
         rem&&h("span",{style:{fontSize:11,color:"#64748b",fontWeight:600,flexShrink:0,marginLeft:"auto"}},rem)
       ):nxt?h("div",{style:{display:"flex",alignItems:"center",gap:8,minWidth:0,flex:1}},
         h("div",{style:{width:8,height:8,borderRadius:"50%",flexShrink:0,background:"#334155"}}),
         h("span",{style:{fontSize:13,color:"#4a6080",fontWeight:600}},"フリータイム"),
-        h("span",{style:{fontSize:11,color:"#64748b",fontWeight:600,flexShrink:0,marginLeft:"auto"}},`次: ${nxt.title.split("\n")[0]}（${untilN}）`)
+        h("span",{style:{fontSize:11,color:"#64748b",fontWeight:600,flexShrink:0,marginLeft:"auto"}},`次: ${(nxt.title||(CATEGORIES.find(c=>c.id===nxt.category)?.label)||"").split("\n")[0]}（${untilN}）`)
       ):h("span",{style:{fontSize:13,color:"#4a6080",fontWeight:600}},"今日のタスク終了 🎉")
     ),
     h("div",{style:{position:"relative",height:6,borderRadius:3,background:"#162240",overflow:"visible"}},
@@ -114,7 +114,7 @@ function Modal({task,onSave,onDelete,onClose}){
   const[st,setSt]=useState(task?.startTime||"09:00");
   const[et,setEt]=useState(task?.endTime||"10:00");
   const isE=!!task?.id;
-  const doSave=()=>{if(!title.trim())return;onSave({id:task?.id||gid(),title:title.trim(),category:cat,startTime:st,endTime:et})};
+  const doSave=()=>{onSave({id:task?.id||gid(),title:title.trim(),category:cat,startTime:st,endTime:et})};
 
   return h("div",{onClick:onClose,style:{position:"fixed",inset:0,zIndex:1000,display:"flex",alignItems:"center",justifyContent:"center",background:"rgba(8,15,30,0.75)",backdropFilter:"blur(8px)"}},
     h("div",{onClick:e=>e.stopPropagation(),style:{background:"#13203a",borderRadius:16,padding:"28px 24px",width:380,maxWidth:"90vw",boxShadow:"0 25px 60px rgba(0,0,0,0.4),0 0 0 1px #1e3050"}},
@@ -203,7 +203,7 @@ function App(){
           }},
             h("div",{style:{display:"flex",alignItems:"center",gap:6}},
               active&&h("div",{style:{width:8,height:8,borderRadius:"50%",flexShrink:0,background:cat.color,boxShadow:`0 0 8px ${cat.color}90`,animation:"pulse 2s ease-in-out infinite"}}),
-              h("span",{style:{fontSize:13,fontWeight:700,color:cat.color,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:sm?"nowrap":"pre-line",lineHeight:1.5,display:"-webkit-box",WebkitLineClamp:sm?1:Math.max(1,Math.floor((height-30)/20)),WebkitBoxOrient:"vertical"}},task.title)
+              h("span",{style:{fontSize:13,fontWeight:700,color:cat.color,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:sm?"nowrap":"pre-line",lineHeight:1.5,display:"-webkit-box",WebkitLineClamp:sm?1:Math.max(1,Math.floor((height-30)/20)),WebkitBoxOrient:"vertical"}},task.title||cat.label)
             ),
             !sm&&h("span",{style:{fontSize:11,color:"#4a6080",fontWeight:500}},`${task.startTime} – ${task.endTime}`)
           );
