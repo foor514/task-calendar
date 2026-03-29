@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="タスク">
+<meta name="theme-color" content="#0f1a2e">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="manifest" href="manifest.json">
+<title>タスクカレンダー</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+html,body,#root{height:100%;overflow:hidden}
+body{
+  font-family:'Noto Sans JP','Helvetica Neue',sans-serif;
+  background:#0a1628;color:#cbd5e1;
+  -webkit-tap-highlight-color:transparent;
+  -webkit-text-size-adjust:100%;
+}
+::-webkit-scrollbar{width:4px}
+::-webkit-scrollbar-thumb{background:#1a2a45;border-radius:2px}
+::-webkit-scrollbar-track{background:transparent}
+input[type="time"]{color-scheme:dark}
+textarea{color-scheme:dark}
+@keyframes pulse{
+  0%,100%{opacity:1;transform:scale(1)}
+  50%{opacity:.4;transform:scale(.8)}
+}
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+<script>
+'use strict';
+const {useState,useEffect,useRef,createElement:h}=React;
+
+const CATEGORIES=[
+  {id:"research",label:"研究",color:"#7cb3ff",bg:"#1a2d4a",border:"#3b6fb5"},
+  {id:"jobhunt",label:"就活",color:"#5eead4",bg:"#142e2b",border:"#2a8a7a"},
+  {id:"workout",label:"筋トレ",color:"#fca5a5",bg:"#3a1c1c",border:"#b84c4c"},
+  {id:"study",label:"勉強",color:"#c4b5fd",bg:"#2a2145",border:"#7c5cbf"},
+  {id:"other",label:"その他",color:"#94a3b8",bg:"#1e2a38",border:"#475569"},
+];
+const HOURS=Array.from({length:24},(_,i)=>i);
+const HH=64;
+const SK="task-calendar-data";
+
+function fmtD(d){return`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`}
+function fmtJP(d){const w=["日","月","火","水","木","金","土"];return`${d.getMonth()+1}月${d.getDate()}日（${w[d.getDay()]}）`}
+function pT(s){const[a,b]=s.split(":").map(Number);return a+b/60}
+function tS(h){const a=Math.floor(h),b=Math.round((h-a)*60);return`${String(a).padStart(2,"0")}:${String(b).padStart(2,"0")}`}
+function snap(h){return Math.round(h*4)/4}
+function load(){try{const r=localStorage.getItem(SK);return r?JSON.parse(r):{}}catch{return{}}}
+function save(t){try{localStorage.setItem(SK,JSON.stringify(t))}catch{}}
+function gid(){return Date.now().toString(36)+Math.random().toString(36).slice(2,6)}
+
+const ss={
+  label:{display:"block",fontSize:12,fontWeight:700,color:"#4a6080",marginBottom:6,letterSpacing:"0.02em"},
+  input:{width:"100%",padding:"10px 12px",borderRadius:10,border:"1px solid #1e3050",fontSize:14,color:"#cbd5e1",background:"#0c1525",outline:"none",marginBottom:16,fontFamily:"'Noto Sans JP',sans-serif"},
+  btn:{padding:"9px 18px",borderRadius:10,border:"none",fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"'Noto Sans JP',sans-serif"},
+  nav:{width:36,height:36,borderRadius:10,border:"1px solid #1a2a45",background:"#111d32",fontSize:14,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",color:"#4a6080"},
+};
+
+function ProgressBar({tasks,isToday}){
+  const[now,setNow]=useState(new Date());
+  useEffect(()=>{if(!isToday)return;const id=setInterval(()=>setNow(new Date()),30000);return()=>clearInterval(id)},[isToday]);
+  if(!isToday||!tasks.length)return null;
+  const nH=now.getHours()+now.getMinutes()/60;
+  const sorted=[...tasks].sort((a,b)=>pT(a.startTime)-pT(b.startTime));
+  const dS=pT(sorted[0].startTime),dE=Math.max(...sorted.map(t=>pT(t.endTime))),span=dE-dS;
+  if(span<=0)return null;
+  const prog=Math.max(0,Math.min(1,(nH-dS)/span));
+  let cur=null,nxt=null;
+  for(const t of sorted){const s=pT(t.startTime),e=pT(t.endTime);if(nH>=s&&nH<e)cur=t;if(s>nH&&!nxt)nxt=t}
+  const cCat=cur?CATEGORIES.find(c=>c.id===cur.category):null;
+  let untilN=null;
+  if(nxt){const d=(pT(nxt.startTime)-nH)*60;if(d>0){const hr=Math.floor(d/60),mn=Math.round(d%60);untilN=hr>0?`${hr}時間${mn}分後`:`${mn}分後`}}
+  let rem=null;
+  if(cur){const d=(pT(cur.endTime)-nH)*60;if(d>0){const hr=Math.floor(d/60),mn=Math.round(d%60);rem=hr>0?`残り${hr}時間${mn}分`:`残り${mn}分`}}
+
+  return h("div",{style:{padding:"14px 20px 12px",background:"#0f1a2e",borderBottom:"1px solid #1a2a45",flexShrink:0}},
+    h("div",{style:{marginBottom:10,display:"flex",alignItems:"center",justifyContent:"space-between"}},
+      cur?h("div",{style:{display:"flex",alignItems:"center",gap:8,minWidth:0,flex:1}},
+        h("div",{style:{width:8,height:8,borderRadius:"50%",flexShrink:0,background:cCat?.color||"#94a3b8",boxShadow:`0 0 10px ${cCat?.color||"#94a3b8"}80`,animation:"pulse 2s ease-in-out infinite"}}),
+        h("span",{style:{fontSize:13,fontWeight:700,color:"#cbd5e1",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}},cur.title.split("\n")[0]),
+        rem&&h("span",{style:{fontSize:11,color:"#64748b",fontWeight:600,flexShrink:0,marginLeft:"auto"}},rem)
+      ):nxt?h("div",{style:{display:"flex",alignItems:"center",gap:8,minWidth:0,flex:1}},
+        h("div",{style:{width:8,height:8,borderRadius:"50%",flexShrink:0,background:"#334155"}}),
+        h("span",{style:{fontSize:13,color:"#4a6080",fontWeight:600}},"フリータイム"),
+        h("span",{style:{fontSize:11,color:"#64748b",fontWeight:600,flexShrink:0,marginLeft:"auto"}},`次: ${nxt.title.split("\n")[0]}（${untilN}）`)
+      ):h("span",{style:{fontSize:13,color:"#4a6080",fontWeight:600}},"今日のタスク終了 🎉")
+    ),
+    h("div",{style:{position:"relative",height:6,borderRadius:3,background:"#162240",overflow:"visible"}},
+      ...sorted.map(t=>{const cat=CATEGORIES.find(c=>c.id===t.category)||CATEGORIES[4];const s=(pT(t.startTime)-dS)/span,w=(pT(t.endTime)-pT(t.startTime))/span;return h("div",{key:t.id,style:{position:"absolute",top:0,bottom:0,left:`${s*100}%`,width:`${w*100}%`,background:cat.color,opacity:.15,borderRadius:3}})}),
+      h("div",{style:{position:"absolute",top:0,bottom:0,left:0,width:`${prog*100}%`,background:cCat?`linear-gradient(90deg,${cCat.color}60,${cCat.color})`:"linear-gradient(90deg,#475569,#64748b)",borderRadius:3,transition:"width 1s ease"}}),
+      h("div",{style:{position:"absolute",top:-3,left:`${prog*100}%`,width:12,height:12,borderRadius:"50%",background:cCat?.color||"#64748b",border:"2px solid #0f1a2e",boxShadow:`0 0 8px ${cCat?.color||"#64748b"}60`,transform:"translateX(-6px)",transition:"left 1s ease"}})
+    ),
+    h("div",{style:{display:"flex",justifyContent:"space-between",marginTop:6,fontSize:10,color:"#334155",fontWeight:600,fontVariantNumeric:"tabular-nums"}},
+      h("span",null,tS(dS)),h("span",null,tS(dE))
+    )
+  );
+}
+
+function Modal({task,onSave,onDelete,onClose}){
+  const[title,setTitle]=useState(task?.title||"");
+  const[cat,setCat]=useState(task?.category||"research");
+  const[st,setSt]=useState(task?.startTime||"09:00");
+  const[et,setEt]=useState(task?.endTime||"10:00");
+  const isE=!!task?.id;
+  const doSave=()=>{if(!title.trim())return;onSave({id:task?.id||gid(),title:title.trim(),category:cat,startTime:st,endTime:et})};
+
+  return h("div",{onClick:onClose,style:{position:"fixed",inset:0,zIndex:1000,display:"flex",alignItems:"center",justifyContent:"center",background:"rgba(8,15,30,0.75)",backdropFilter:"blur(8px)"}},
+    h("div",{onClick:e=>e.stopPropagation(),style:{background:"#13203a",borderRadius:16,padding:"28px 24px",width:380,maxWidth:"90vw",boxShadow:"0 25px 60px rgba(0,0,0,0.4),0 0 0 1px #1e3050"}},
+      h("h3",{style:{margin:"0 0 20px",fontSize:18,fontWeight:700,letterSpacing:"-0.02em",color:"#cbd5e1"}},isE?"タスクを編集":"新しいタスク"),
+      h("label",{style:ss.label},"やること"),
+      h("textarea",{value:title,onChange:e=>setTitle(e.target.value),placeholder:"例：\n・〇〇の論文を3本読む\n・要点をNotionにまとめる",autoFocus:true,rows:3,style:{...ss.input,resize:"vertical",minHeight:72,lineHeight:1.6}}),
+      h("label",{style:ss.label},"カテゴリ"),
+      h("div",{style:{display:"flex",gap:6,flexWrap:"wrap",marginBottom:16}},
+        ...CATEGORIES.map(c=>h("button",{key:c.id,onClick:()=>setCat(c.id),style:{padding:"6px 14px",borderRadius:20,fontSize:13,fontWeight:600,border:cat===c.id?`2px solid ${c.color}`:"2px solid #1e3050",background:cat===c.id?c.bg:"#0c1525",color:cat===c.id?c.color:"#4a6080",cursor:"pointer"}},c.label))
+      ),
+      h("div",{style:{display:"flex",gap:12,marginBottom:20}},
+        h("div",{style:{flex:1}},h("label",{style:ss.label},"開始"),h("input",{type:"time",value:st,onChange:e=>setSt(e.target.value),style:ss.input})),
+        h("div",{style:{flex:1}},h("label",{style:ss.label},"終了"),h("input",{type:"time",value:et,onChange:e=>setEt(e.target.value),style:ss.input}))
+      ),
+      h("div",{style:{display:"flex",gap:10,justifyContent:"flex-end"}},
+        isE&&h("button",{onClick:()=>onDelete(task.id),style:{...ss.btn,background:"#3a1c1c",color:"#fca5a5"}},"削除"),
+        h("button",{onClick:onClose,style:{...ss.btn,background:"#162240",color:"#64748b"}},"キャンセル"),
+        h("button",{onClick:doSave,style:{...ss.btn,background:"#7cb3ff",color:"#0a1628"}},isE?"更新":"追加")
+      )
+    )
+  );
+}
+
+function App(){
+  const[curDate,setCurDate]=useState(new Date());
+  const[all,setAll]=useState(load);
+  const[modal,setModal]=useState(null);
+  const ref=useRef(null);
+  const dk=fmtD(curDate),tasks=all[dk]||[];
+  const isT=fmtD(curDate)===fmtD(new Date());
+
+  useEffect(()=>{save(all)},[all]);
+  useEffect(()=>{if(ref.current)ref.current.scrollTop=7*HH},[]);
+
+  const go=n=>{const d=new Date(curDate);d.setDate(d.getDate()+n);setCurDate(d)};
+  const clickTL=e=>{if(e.target!==e.currentTarget&&!e.target.classList.contains("hr"))return;const r=e.currentTarget.getBoundingClientRect();const y=e.clientY-r.top+e.currentTarget.scrollTop;const hr=snap(y/HH);setModal({startTime:tS(Math.max(0,Math.min(hr,23))),endTime:tS(Math.min(24,hr+1))})};
+  const doSave=t=>{setAll(p=>{const d=p[dk]||[];const i=d.findIndex(x=>x.id===t.id);return{...p,[dk]:i>=0?d.map(x=>x.id===t.id?t:x):[...d,t]}});setModal(null)};
+  const doDel=id=>{setAll(p=>({...p,[dk]:(p[dk]||[]).filter(t=>t.id!==id)}));setModal(null)};
+
+  const now=new Date(),nH=now.getHours()+now.getMinutes()/60;
+
+  return h("div",{style:{height:"100vh",display:"flex",flexDirection:"column",background:"#0a1628",color:"#cbd5e1",overflow:"hidden",paddingTop:"env(safe-area-inset-top)"}},
+    // Header
+    h("div",{style:{padding:"14px 16px",background:"#0f1a2e",borderBottom:"1px solid #1a2a45",display:"flex",alignItems:"center",justifyContent:"space-between",flexShrink:0}},
+      h("div",{style:{display:"flex",alignItems:"center",gap:10}},
+        h("button",{onClick:()=>go(-1),style:ss.nav},"◀"),
+        h("div",null,
+          h("div",{style:{fontSize:18,fontWeight:800,letterSpacing:"-0.03em",color:isT?"#cbd5e1":"#4a6080"}},fmtJP(curDate)),
+          isT&&h("span",{style:{fontSize:10,fontWeight:700,color:"#0a1628",background:"#7cb3ff",borderRadius:10,padding:"2px 8px",letterSpacing:"0.04em"}},"TODAY")
+        ),
+        h("button",{onClick:()=>go(1),style:ss.nav},"▶")
+      ),
+      h("div",{style:{display:"flex",alignItems:"center",gap:10}},
+        h("span",{style:{fontSize:12,color:"#4a6080",fontWeight:600}},`${tasks.length} タスク`),
+        h("button",{onClick:()=>setModal({startTime:"09:00",endTime:"10:00"}),style:{width:40,height:40,borderRadius:12,background:"#7cb3ff",color:"#0a1628",border:"none",fontSize:22,fontWeight:300,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",boxShadow:"0 4px 16px rgba(124,179,255,0.2)"}},"+")
+      )
+    ),
+    // Progress
+    h(ProgressBar,{tasks,isToday:isT}),
+    // Legend
+    h("div",{style:{padding:"8px 16px",display:"flex",gap:8,flexWrap:"wrap",background:"#0f1a2e",borderBottom:"1px solid #1a2a45",flexShrink:0}},
+      ...CATEGORIES.map(c=>{const n=tasks.filter(t=>t.category===c.id).length;return h("span",{key:c.id,style:{display:"flex",alignItems:"center",gap:4,fontSize:11,color:n>0?c.color:"#2a3f5a",fontWeight:600}},
+        h("span",{style:{width:8,height:8,borderRadius:3,background:n>0?c.color:"#1a2a45"}}),c.label,n>0&&h("span",{style:{fontSize:10,opacity:.6}},`(${n})`))})
+    ),
+    // Timeline
+    h("div",{ref,onClick:clickTL,style:{flex:1,overflowY:"auto",position:"relative",background:"#0a1628",WebkitOverflowScrolling:"touch"}},
+      h("div",{style:{position:"relative",height:24*HH}},
+        ...HOURS.map(hr=>h("div",{key:hr,className:"hr",style:{position:"absolute",top:hr*HH,left:0,right:0,height:HH,borderBottom:"1px solid #111d32",display:"flex",alignItems:"flex-start"}},
+          h("span",{style:{width:48,paddingTop:4,textAlign:"right",paddingRight:10,fontSize:11,fontWeight:600,color:"#2a3f5a",fontVariantNumeric:"tabular-nums",flexShrink:0,userSelect:"none"}},`${String(hr).padStart(2,"0")}:00`)
+        )),
+        // Now line
+        isT&&h("div",{style:{position:"absolute",top:nH*HH,left:44,right:8,height:2,background:"#ef4444",zIndex:10,borderRadius:1,boxShadow:"0 0 12px rgba(239,68,68,0.4)"}},
+          h("div",{style:{position:"absolute",left:-5,top:-4,width:10,height:10,borderRadius:"50%",background:"#ef4444",boxShadow:"0 0 8px rgba(239,68,68,0.5)"}})
+        ),
+        // Tasks
+        ...tasks.map(task=>{
+          const cat=CATEGORIES.find(c=>c.id===task.category)||CATEGORIES[4];
+          const s=pT(task.startTime),e=pT(task.endTime),top=s*HH,height=Math.max((e-s)*HH,28);
+          const sm=height<48,active=isT&&nH>=s&&nH<e;
+          return h("div",{key:task.id,onClick:ev=>{ev.stopPropagation();setModal({task})},style:{
+            position:"absolute",top,left:56,right:10,height,background:cat.bg,
+            border:`1px solid ${cat.border}50`,borderLeft:`4px solid ${cat.color}`,borderRadius:8,
+            padding:sm?"2px 10px":"6px 10px",cursor:"pointer",zIndex:5,overflow:"hidden",
+            display:"flex",alignItems:sm?"center":"flex-start",flexDirection:sm?"row":"column",gap:sm?8:2,
+            boxShadow:active?`0 0 0 1px ${cat.color}80,0 4px 24px ${cat.color}20`:"none",
+          }},
+            h("div",{style:{display:"flex",alignItems:"center",gap:6}},
+              active&&h("div",{style:{width:8,height:8,borderRadius:"50%",flexShrink:0,background:cat.color,boxShadow:`0 0 8px ${cat.color}90`,animation:"pulse 2s ease-in-out infinite"}}),
+              h("span",{style:{fontSize:13,fontWeight:700,color:cat.color,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:sm?"nowrap":"pre-line",lineHeight:1.5,display:"-webkit-box",WebkitLineClamp:sm?1:Math.max(1,Math.floor((height-30)/20)),WebkitBoxOrient:"vertical"}},task.title)
+            ),
+            !sm&&h("span",{style:{fontSize:11,color:"#4a6080",fontWeight:500}},`${task.startTime} – ${task.endTime}`)
+          );
+        })
+      )
+    ),
+    modal&&h(Modal,{task:modal.task||{startTime:modal.startTime,endTime:modal.endTime},onSave:doSave,onDelete:doDel,onClose:()=>setModal(null)})
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(h(App));
+
+// Register SW
+if('serviceWorker' in navigator){navigator.serviceWorker.register('./sw.js').catch(()=>{})}
+</script>
+</body>
+</html>
