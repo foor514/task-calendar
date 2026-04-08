@@ -1,6 +1,6 @@
 {
-  "name": "タスクカレンダー",
-  "short_name": "タスク",
+  "name": "task calendar",
+  "short_name": "task calendar",
   "description": "日間タイムライン式タスク管理アプリ",
   "start_url": "./index.html",
   "display": "standalone",

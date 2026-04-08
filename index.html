@@ -5,11 +5,15 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="apple-mobile-web-app-title" content="タスク">
+<meta name="apple-mobile-web-app-title" content="task calendar">
 <meta name="theme-color" content="#0f1a2e">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <link rel="manifest" href="manifest.json">
-<title>タスクカレンダー</title>
+<title>task calendar</title>
+<meta property="og:title" content="task calendar">
+<meta property="og:description" content="日間タイムライン式タスク管理アプリ">
+<meta property="og:url" content="https://task-calendar-7a51e.web.app">
+<meta property="og:type" content="website">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <style>
@@ -34,11 +38,34 @@ textarea{color-scheme:dark}
 </head>
 <body>
 <div id="root"></div>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
 <script>
 'use strict';
 const {useState,useEffect,useRef,createElement:h}=React;
+
+firebase.initializeApp({
+  apiKey:"AIzaSyAb7zReBuDpSouwCqyPE9w51UZ-XNzZeqU",
+  authDomain:"task-calendar-7a51e.firebaseapp.com",
+  projectId:"task-calendar-7a51e",
+  storageBucket:"task-calendar-7a51e.firebasestorage.app",
+  messagingSenderId:"1012473968578",
+  appId:"1:1012473968578:web:81469669df93071c50485b"
+});
+const auth=firebase.auth();
+auth.setPersistence(firebase.auth.Auth.Persistence.LOCAL);
+const db=firebase.firestore();
+const googleProvider=new firebase.auth.GoogleAuthProvider();
+async function fsLoad(uid){
+  const doc=await db.collection("users").doc(uid).get();
+  return doc.exists?doc.data():{};
+}
+function fsSave(uid,data){
+  return db.collection("users").doc(uid).set(data,{merge:true});
+}
 
 const CATEGORIES=[
   {id:"research",label:"研究",color:"#7cb3ff",bg:"#1a2d4a",border:"#3b6fb5"},
@@ -108,6 +135,41 @@ function ProgressBar({tasks,isToday}){
     ),
     h("div",{style:{display:"flex",justifyContent:"space-between",marginTop:6,fontSize:10,color:"#334155",fontWeight:600,fontVariantNumeric:"tabular-nums"}},
       h("span",null,tS(dS)),h("span",null,tS(dE))
+    )
+  );
+}
+
+const isStandalone=window.navigator.standalone===true||window.matchMedia('(display-mode: standalone)').matches;
+
+function LoginScreen(){
+  const[loading,setLoading]=useState(false);
+  const[hint,setHint]=useState(false);
+  const doSignIn=async()=>{
+    setLoading(true);
+    setHint(false);
+    try{
+      await auth.signInWithPopup(googleProvider);
+    }catch(e){
+      if(isStandalone&&(e.code==='auth/popup-blocked'||e.code==='auth/cancelled-popup-request')){
+        setHint(true);
+      }
+      console.error(e);
+      setLoading(false);
+    }
+  };
+  return h("div",{style:{height:"100vh",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",background:"#0a1628",gap:32,padding:24}},
+    h("div",{style:{textAlign:"center"}},
+      h("div",{style:{fontSize:30,fontWeight:800,color:"#cbd5e1",letterSpacing:"-0.03em"}},"task calendar"),
+      h("div",{style:{fontSize:13,color:"#4a6080",marginTop:8}},"Googleアカウントでデータを同期")
+    ),
+    h("button",{onClick:doSignIn,disabled:loading,style:{display:"flex",alignItems:"center",gap:12,padding:"14px 24px",borderRadius:14,background:"#13203a",border:"1px solid #1e3050",color:"#cbd5e1",fontSize:15,fontWeight:700,cursor:loading?"not-allowed":"pointer",fontFamily:"'Noto Sans JP',sans-serif",opacity:loading?0.6:1}},
+      h("img",{src:"https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg",width:20,height:20}),
+      loading?"ログイン中...":"Googleでログイン"
+    ),
+    hint&&h("div",{style:{maxWidth:280,textAlign:"center",fontSize:12,color:"#fbbf24",lineHeight:1.7,background:"#2d2008",border:"1px solid #b87d10",borderRadius:10,padding:"12px 16px"}},
+      "ポップアップがブロックされました。",h("br"),
+      "Safariで",h("a",{href:"https://task-calendar-7a51e.web.app",style:{color:"#fbbf24"}},"このリンク"),
+      "を開いてログインしてから、ホーム画面のアイコンで再度起動してください。"
     )
   );
 }
@@ -185,18 +247,45 @@ function Modal({task,memos,onSave,onDelete,onClose}){
   );
 }
 
-function App(){
+function App({user}){
   const[curDate,setCurDate]=useState(new Date());
   const[all,setAll]=useState(load);
   const[memos,setMemos]=useState(loadMemos);
   const[modal,setModal]=useState(null);
   const[showMemos,setShowMemos]=useState(false);
+  const[syncing,setSyncing]=useState(true);
   const ref=useRef(null);
   const dk=fmtD(curDate),tasks=all[dk]||[];
   const isT=fmtD(curDate)===fmtD(new Date());
 
-  useEffect(()=>{save(all)},[all]);
-  useEffect(()=>{saveMemos(memos)},[memos]);
+  // 初回ログイン時にFirestoreからロード（なければlocalStorageをアップロード）
+  useEffect(()=>{
+    if(!user)return;
+    setSyncing(true);
+    fsLoad(user.uid).then(d=>{
+      if(d.tasks){setAll(d.tasks);save(d.tasks);}
+      else if(Object.keys(load()).length>0){fsSave(user.uid,{tasks:load(),memos:loadMemos()});}
+      if(d.memos){setMemos(d.memos);saveMemos(d.memos);}
+    }).finally(()=>setSyncing(false));
+  },[user]);
+
+  // フォーカス復帰時に再同期（他のデバイスでの変更を反映）
+  useEffect(()=>{
+    if(!user)return;
+    const onVis=()=>{
+      if(!document.hidden){
+        fsLoad(user.uid).then(d=>{
+          if(d.tasks){setAll(d.tasks);save(d.tasks);}
+          if(d.memos){setMemos(d.memos);saveMemos(d.memos);}
+        });
+      }
+    };
+    document.addEventListener("visibilitychange",onVis);
+    return()=>document.removeEventListener("visibilitychange",onVis);
+  },[user]);
+
+  useEffect(()=>{if(!syncing){save(all);if(user)fsSave(user.uid,{tasks:all});}},[all]);
+  useEffect(()=>{if(!syncing){saveMemos(memos);if(user)fsSave(user.uid,{memos});}},[memos]);
   useEffect(()=>{if(ref.current)ref.current.scrollTop=7*HH},[]);
 
   const go=n=>{const d=new Date(curDate);d.setDate(d.getDate()+n);setCurDate(d)};
@@ -209,18 +298,19 @@ function App(){
   return h("div",{style:{height:"100vh",display:"flex",flexDirection:"column",background:"#0a1628",color:"#cbd5e1",overflow:"hidden",paddingTop:"env(safe-area-inset-top)"}},
     // Header
     h("div",{style:{padding:"14px 16px",background:"#0f1a2e",borderBottom:"1px solid #1a2a45",display:"flex",alignItems:"center",justifyContent:"space-between",flexShrink:0}},
-      h("div",{style:{display:"flex",alignItems:"center",gap:10}},
-        h("button",{onClick:()=>go(-1),style:ss.nav},"◀"),
-        h("div",null,
-          h("div",{style:{fontSize:18,fontWeight:800,letterSpacing:"-0.03em",color:isT?"#cbd5e1":"#4a6080"}},fmtJP(curDate)),
-          isT&&h("span",{style:{fontSize:10,fontWeight:700,color:"#0a1628",background:"#7cb3ff",borderRadius:10,padding:"2px 8px",letterSpacing:"0.04em"}},"TODAY")
-        ),
-        h("button",{onClick:()=>go(1),style:ss.nav},"▶")
+      h("div",{style:{display:"flex",alignItems:"center",gap:8}},
+        user&&h("img",{src:user.photoURL,width:28,height:28,style:{borderRadius:"50%",border:"2px solid #1a2a45",cursor:"pointer"},title:user.displayName,onClick:()=>{if(confirm(`${user.displayName}\nログアウトしますか？`))auth.signOut()}}),
+        h("button",{onClick:()=>go(-1),style:ss.nav},"◀")
       ),
-      h("div",{style:{display:"flex",alignItems:"center",gap:10}},
-        h("span",{style:{fontSize:12,color:"#4a6080",fontWeight:600}},`${tasks.length} タスク`),
-        h("button",{onClick:()=>setShowMemos(true),style:{width:40,height:40,borderRadius:12,background:"#162240",color:"#7cb3ff",border:"1px solid #1a2a45",fontSize:17,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}},"≡"),
-        h("button",{onClick:()=>setModal({startTime:"09:00",endTime:"10:00"}),style:{width:40,height:40,borderRadius:12,background:"#7cb3ff",color:"#0a1628",border:"none",fontSize:22,fontWeight:300,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",boxShadow:"0 4px 16px rgba(124,179,255,0.2)"}},"+")
+      h("div",{style:{textAlign:"center"}},
+        h("div",{style:{fontSize:18,fontWeight:800,letterSpacing:"-0.03em",color:isT?"#cbd5e1":"#4a6080"}},fmtJP(curDate)),
+        isT&&h("span",{style:{fontSize:10,fontWeight:700,color:"#0a1628",background:"#7cb3ff",borderRadius:10,padding:"2px 8px",letterSpacing:"0.04em"}},"TODAY")
+      ),
+      h("div",{style:{display:"flex",alignItems:"center",gap:8}},
+        h("button",{onClick:()=>go(1),style:ss.nav},"▶"),
+        syncing&&h("span",{style:{fontSize:11,color:"#4a6080"}},"⟳"),
+        h("button",{onClick:()=>setShowMemos(true),style:{width:36,height:36,borderRadius:12,background:"#162240",color:"#7cb3ff",border:"1px solid #1a2a45",fontSize:17,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}},"≡"),
+        h("button",{onClick:()=>setModal({startTime:"09:00",endTime:"10:00"}),style:{width:36,height:36,borderRadius:12,background:"#7cb3ff",color:"#0a1628",border:"none",fontSize:22,fontWeight:300,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",boxShadow:"0 4px 16px rgba(124,179,255,0.2)"}},"+")
       )
     ),
     // Progress
@@ -266,7 +356,14 @@ function App(){
   );
 }
 
-ReactDOM.createRoot(document.getElementById("root")).render(h(App));
+function Root(){
+  const[user,setUser]=useState(undefined);
+  useEffect(()=>auth.onAuthStateChanged(u=>setUser(u||null)),[]);
+  if(user===undefined)return h("div",{style:{display:"flex",height:"100vh",alignItems:"center",justifyContent:"center",background:"#0a1628",color:"#4a6080",fontSize:14}},"読み込み中...");
+  if(!user)return h(LoginScreen);
+  return h(App,{user});
+}
+ReactDOM.createRoot(document.getElementById("root")).render(h(Root));
 
 // Register SW
 if('serviceWorker' in navigator){navigator.serviceWorker.register('./sw.js').catch(()=>{})}
